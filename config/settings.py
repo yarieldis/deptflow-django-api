@@ -14,6 +14,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,12 +24,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-kd(wj3n!thoch472ys$ml(+@**%b*w#6r3cvy(6+xt#69jem8x'
+SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-only-key-change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DEBUG", "true").lower() in ("1", "true", "yes", "on")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 
 # Application definition
@@ -122,10 +128,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
+        conn_max_age=600,
+    )
 }
 
 
@@ -170,13 +176,28 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # Email — dispatched asynchronously through Celery.
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "webmaster@localhost")
+MAIL_DELIVERY = os.environ.get("MAIL_DELIVERY", "console" if DEBUG else "smtp")
+
 MAILERS = {
     'default': {
         'BACKEND': 'core.mail.CeleryEmailBackend',
-        'OPTIONS': {'delivery_mailer': 'console'},
+        'OPTIONS': {'delivery_mailer': MAIL_DELIVERY},
     },
     'console': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+    },
+    'smtp': {
+        'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+        'OPTIONS': {
+            'host': os.environ.get('EMAIL_HOST', 'localhost'),
+            'port': int(os.environ.get('EMAIL_PORT', '25')),
+            'username': os.environ.get('EMAIL_HOST_USER', ''),
+            'password': os.environ.get('EMAIL_HOST_PASSWORD', ''),
+            'use_tls': os.environ.get('EMAIL_USE_TLS', 'false').lower() in ('1', 'true', 'yes', 'on'),
+            'use_ssl': os.environ.get('EMAIL_USE_SSL', 'false').lower() in ('1', 'true', 'yes', 'on'),
+            'timeout': int(os.environ.get('EMAIL_TIMEOUT', '10')),
+        },
     },
 }
 
