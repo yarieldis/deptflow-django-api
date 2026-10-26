@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
-from core.models import TenantModel
+from core.models import TenantModel, UUIDModel
 
 
 class Role(TenantModel):
@@ -61,3 +62,38 @@ class Person(TenantModel):
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name}".strip()
+
+
+class PersonDepartment(UUIDModel):
+    """Membership: a person in a department with a role and a date range.
+
+    Own PK (not composite) so a person can rejoin a department as a separate
+    historical period. Active membership = no end date or an end date not yet
+    passed.
+    """
+
+    person = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="memberships"
+    )
+    department = models.ForeignKey(
+        "institutions.Department", on_delete=models.CASCADE, related_name="memberships"
+    )
+    role = models.ForeignKey(Role, on_delete=models.RESTRICT, related_name="+")
+    is_primary = models.BooleanField(default=False)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-start_date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["person", "department", "start_date"],
+                name="uniq_membership_start",
+            )
+        ]
+
+    def is_active_on(self, date=None) -> bool:
+        """Active if ``start <= date AND (end is null OR date <= end)``."""
+        if date is None:
+            date = timezone.localdate()
+        return self.start_date <= date and (self.end_date is None or date <= self.end_date)
