@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -168,11 +169,17 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
+# Email — dispatched asynchronously through Celery.
 MAILERS = {
     'default': {
+        'BACKEND': 'core.mail.CeleryEmailBackend',
+        'OPTIONS': {'delivery_mailer': 'console'},
+    },
+    'console': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+# Celery
+CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_TASK_ALWAYS_EAGER = True  # run tasks inline in dev/test (no broker needed)
