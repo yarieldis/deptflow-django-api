@@ -1,6 +1,6 @@
 from django.db import IntegrityError
 
-from core.errors import ConflictError, NotFoundError
+from core.errors import ConflictError, ForbiddenError, NotFoundError
 from core.tenancy import require_tenant
 from institutions.models import Department
 from people.models import Person, PersonDepartment, Role
@@ -85,3 +85,15 @@ def assign_membership(
 def list_roles() -> list[Role]:
     tenant_id = require_tenant()
     return list(Role.objects.for_tenant(tenant_id))
+
+
+def resolve_current_person(request) -> Person:
+    """Resolve the authenticated login to a Person in the current tenant."""
+    tenant_id = require_tenant()
+    user = getattr(request, "user", None)
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise ForbiddenError("Not authenticated.")
+    person = Person.objects.for_tenant(tenant_id).filter(user=user).first()
+    if person is None:
+        raise ForbiddenError("No person record in this institution.")
+    return person
