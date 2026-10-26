@@ -1,10 +1,11 @@
 from ninja import NinjaAPI
+from ninja_jwt.authentication import JWTAuth
 
 from core.errors import DomainError
 from institutions.api import router as institutions_router
 from people.api import router as people_router
 
-api = NinjaAPI(title="DeptFlow API")
+api = NinjaAPI(title="DeptFlow API", auth=JWTAuth())
 
 
 @api.exception_handler(DomainError)
