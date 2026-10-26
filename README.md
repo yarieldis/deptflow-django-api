@@ -8,9 +8,9 @@ Backend services for the **DeptFlow** department workflow application. It manage
 
 ## Project status
 
-**Planning complete — implementation pending.** The migration from the .NET implementation to Django is fully designed and captured in the `django-tech-stack` OpenSpec change; code is not written yet.
+**Implemented.** The backend is fully migrated to Django with behavior parity to the technology-agnostic OpenSpec specs.
 
-- `openspec/changes/django-tech-stack/` — proposal, design, and task checklist for the Django build
+- `openspec/changes/django-tech-stack/` — the Django migration change (proposal, design, task checklist)
 - `docs/django-migration-plan.md` — narrative migration plan
 - `openspec/changes/<name>/specs/` — the technology-agnostic behavior specs that remain the contract
 
@@ -20,7 +20,7 @@ Backend services for the **DeptFlow** department workflow application. It manage
 - [Django Ninja](https://django-ninja.dev/) — typed API + auto-generated OpenAPI
 - [dj-rest-auth](https://dj-rest-auth.readthedocs.io/) + [SimpleJWT](https://django-rest-framework-simplejwt.readthedocs.io/) — auth endpoints + JWT
 - [Django ORM](https://docs.djangoproject.com/en/stable/topics/db/) — SQLite (dev/test) and PostgreSQL (prod)
-- [Celery](https://docs.celeryq.dev/) + [Redis](https://redis.io/) + [django-celery-email](https://pypi.org/project/django-celery-email/) — async email
+- [Celery](https://docs.celeryq.dev/) + [Redis](https://redis.io/) — async email via a custom MAILERS-aware backend (`core/mail`)
 - [Django Storage API](https://docs.djangoproject.com/en/stable/topics/files/) — filesystem storage (django-storages for S3/Azure later)
 
 ## Architecture
@@ -88,21 +88,25 @@ uv run python manage.py migrate
 
 ## Endpoints
 
+Business routes below are mounted under `/api/` (e.g. `/api/documents`); Identity routes are under `/auth/`.
+
 ### Identity
 
-Served by dj-rest-auth (mapped to the original Identity contract):
+Served by dj-rest-auth (JWT via SimpleJWT):
 
-- `POST /register`
-- `POST /login`
-- `POST /refresh`
-- `POST /confirmEmail`
-- `POST /resendConfirmationEmail`
-- `POST /forgotPassword`
-- `POST /resetPassword`
-- `GET /manage/info`
-- `POST /manage/info`
-- `POST /manage/2fa`
-- `POST /logout`
+| Method | Route | Description |
+| --- | --- | --- |
+| `POST` | `/auth/registration/` | Register a new user |
+| `POST` | `/auth/login/` | Obtain access + refresh tokens |
+| `POST` | `/auth/token/refresh/` | Refresh an access token |
+| `POST` | `/auth/token/verify/` | Verify a token |
+| `GET`/`PUT` | `/auth/user/` | Get / update the current user |
+| `POST` | `/auth/logout/` | Log out |
+| `POST` | `/auth/password/reset/` | Request a password reset |
+| `POST` | `/auth/password/reset/confirm/` | Confirm a password reset |
+| `POST` | `/auth/password/change/` | Change password |
+| `POST` | `/auth/registration/verify-email/` | Confirm an email address |
+| `POST` | `/auth/registration/resend-email/` | Resend confirmation email |
 
 ### Documents
 
@@ -144,13 +148,14 @@ Served by dj-rest-auth (mapped to the original Identity contract):
 Environment variables (see `config/settings.py`):
 
 - `SECRET_KEY` — Django secret key
-- `DEBUG` — debug mode (default off in prod)
-- `ALLOWED_HOSTS` — hosts allowed to access the API
-- `DATABASE_URL` — database connection (SQLite default in dev, PostgreSQL in prod)
-- `REDIS_URL` — Celery broker URL
-- `STORAGE_BACKEND` / storage settings — filesystem default
-- `EMAIL_*` — SMTP settings; email is dispatched asynchronously via django-celery-email
-- `CELERY_TASK_ALWAYS_EAGER` — run email synchronously in dev/test (default true)
+- `DEBUG` — debug mode (default `true` in dev)
+- `ALLOWED_HOSTS` — comma-separated hosts (default `localhost,127.0.0.1`)
+- `DATABASE_URL` — database URL (SQLite `db.sqlite3` by default; PostgreSQL in prod, e.g. `postgres://user:pass@host/dbname`)
+- `REDIS_URL` — Celery broker URL (default `redis://localhost:6379/0`)
+- `MAIL_DELIVERY` — Celery email delivery mailer: `console` (dev) or `smtp` (prod)
+- `DEFAULT_FROM_EMAIL` — from address (default `webmaster@localhost`)
+- `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_TIMEOUT` — SMTP mailer options
+- `CELERY_TASK_ALWAYS_EAGER` — run email inline in dev/test (default `true`)
 
 ## Testing
 
@@ -158,7 +163,7 @@ Environment variables (see `config/settings.py`):
 uv run pytest
 ```
 
-Tests (pytest + pytest-django) cover hierarchy cycle detection, membership active/ended logic, tenant isolation, unique-constraint rejections, department-scoped document access, filesystem storage, the document service layer, and the full approval/publish workflow against SQLite; PostgreSQL is exercised in CI.
+Tests (pytest + pytest-django) cover hierarchy cycle detection, membership active/ended logic, tenant isolation, unique-constraint rejections, department-scoped document access, filesystem storage, the document service layer, and the full approval/publish workflow against SQLite. PostgreSQL is the production database.
 
 ## Project structure
 

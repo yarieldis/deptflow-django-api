@@ -6,13 +6,13 @@ This file provides guidance to AI agents when working with the **deptflow-django
 
 **Purpose**: Backend services for the **DeptFlow** department workflow application. It manages institutions, departments, the people working in them, and the (versioned) documents those people use, exposed as a multi-tenant REST API.
 
-**Status**: Planning complete — the `django-tech-stack` OpenSpec change captures the migration from .NET to Django; implementation is not started yet.
+**Status**: Implemented — the Django backend is complete with behavior parity to the OpenSpec specs.
 
 **Technology Stack**:
 - Python 3.12+ / Django (latest stable)
 - Django Ninja (API + auto-generated OpenAPI)
 - dj-rest-auth + djangorestframework-simplejwt (auth endpoints + JWT)
-- Celery + Redis + django-celery-email (async email)
+- Celery + Redis (async email via a custom MAILERS-aware backend, `core.mail`)
 - Django ORM — SQLite (dev/test), PostgreSQL (prod)
 - Django Storage API (filesystem default; django-storages for S3/Azure later)
 
@@ -89,11 +89,11 @@ The API runs at `http://localhost:8000/api/`; OpenAPI is at `/api/openapi.json` 
 
 Environment variables (see `config/settings.py`):
 
-- `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`
-- `DATABASE_URL` — SQLite default in dev, PostgreSQL in prod
-- `REDIS_URL` — Celery broker
-- `STORAGE_BACKEND` / storage settings — filesystem default
-- `EMAIL_*` — SMTP (dispatched async via django-celery-email)
+- `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` (comma-separated)
+- `DATABASE_URL` — SQLite `db.sqlite3` default in dev, PostgreSQL in prod
+- `REDIS_URL` — Celery broker (default `redis://localhost:6379/0`)
+- `MAIL_DELIVERY` — Celery email delivery mailer: `console` (dev) or `smtp` (prod)
+- `DEFAULT_FROM_EMAIL` + `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `EMAIL_TIMEOUT` — SMTP mailer options
 - `CELERY_TASK_ALWAYS_EAGER` — sync email in dev/test (default true)
 
 ## OpenSpec Workflow
@@ -109,7 +109,7 @@ The active change is `django-tech-stack` (the Django migration; declares `skip_s
 
 ## Testing
 
-Test with pytest + pytest-django: `uv run pytest`. Covers unit tests (hierarchy cycle detection, membership active/ended logic) and integration tests (tenant isolation, unique-constraint rejections, department-scoped document access, filesystem storage, the document service layer, and the full approval/publish workflow) against SQLite; PostgreSQL is exercised in CI.
+Test with pytest + pytest-django: `uv run pytest`. Covers unit tests (hierarchy cycle detection, membership active/ended logic) and integration tests (tenant isolation, unique-constraint rejections, department-scoped document access, filesystem storage, the document service layer, and the full approval/publish workflow) against SQLite; PostgreSQL is the production database.
 
 ## Version Control Guidelines
 
