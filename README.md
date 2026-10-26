@@ -6,14 +6,6 @@ Web API for the department workflow application, built with Django.
 
 Backend services for the **DeptFlow** department workflow application. It manages institutions, departments, the people working in them, and the (versioned) documents those people use, exposed as a multi-tenant REST API.
 
-## Project status
-
-**Implemented.** The backend is fully migrated to Django with behavior parity to the technology-agnostic OpenSpec specs.
-
-- `openspec/changes/django-tech-stack/` — the Django migration change (proposal, design, task checklist)
-- `docs/django-migration-plan.md` — narrative migration plan
-- `openspec/changes/<name>/specs/` — the technology-agnostic behavior specs that remain the contract
-
 ## Tech stack
 
 - [Django](https://www.djangoproject.com/) (Python 3.12+)
@@ -174,8 +166,6 @@ deptflow-django-api/
 ├── institutions/         # Institution and Department
 ├── people/               # Role, Person, PersonDepartment
 ├── documents/            # Document, DocumentVersion, DocumentType, workflow services
-├── docs/                 # planning docs (django-migration-plan.md)
-├── openspec/             # OpenSpec specs and change proposals
 └── pyproject.toml        # uv-managed dependencies
 ```
 
@@ -183,4 +173,3 @@ deptflow-django-api/
 
 - The default dev database is a local SQLite file (`db.sqlite3`), which is gitignored; apply migrations to create/update it.
 - Multi-tenancy is established per request via the `X-Institution-Id` header; most endpoints additionally require the caller to hold an active membership in the relevant department.
-- The behavior contract (endpoints, state machine, access rules) is defined by the OpenSpec specs under `openspec/changes/`, which are technology-agnostic and carried over unchanged from the .NET implementation.
