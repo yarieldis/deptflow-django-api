@@ -1,5 +1,7 @@
 from django.db import models
+from django.utils import timezone
 
+from core.errors import InvalidStateError
 from core.models import TenantModel, UUIDModel
 
 
@@ -130,6 +132,81 @@ class Document(TenantModel):
     def version(self) -> str:
         """The ``Major.Minor`` publish version."""
         return f"{self.major_version}.{self.minor_version}"
+
+    # --- Workflow state machine (guarded; mutate only through these methods) ---
+
+    def submit(self, by_person):
+        if self.status != self.Status.DRAFT:
+            raise InvalidStateError("Only draft documents can be submitted.")
+        if self.requires_new_upload:
+            raise InvalidStateError("A new upload is required before resubmitting.")
+        self.status = self.Status.PENDING_APPROVAL
+        self.submitted_at = timezone.now()
+        self.submitted_by_person = by_person
+
+    def approve(self, by_person, comment=""):
+        if self.status != self.Status.PENDING_APPROVAL:
+            raise InvalidStateError("Only pending documents can be approved.")
+        latest = self.latest_version
+        if latest is not None and latest.created_by_person_id == by_person.pk:
+            raise InvalidStateError("The uploader cannot approve their own document.")
+        self.status = self.Status.APPROVED
+        self.reviewed_at = timezone.now()
+        self.reviewed_by_person = by_person
+        self.review_comment = comment
+
+    def reject(self, by_person, comment, requires_new_upload=False):
+        if self.status != self.Status.PENDING_APPROVAL:
+            raise InvalidStateError("Only pending documents can be rejected.")
+        if not comment or not comment.strip():
+            raise InvalidStateError("A comment is required to reject a document.")
+        self.status = self.Status.DRAFT
+        self.reviewed_at = timezone.now()
+        self.reviewed_by_person = by_person
+        self.review_comment = comment
+        if requires_new_upload:
+            self.requires_new_upload = True
+            self.requires_new_upload_from_version = self.latest_version
+        else:
+            self.requires_new_upload = False
+            self.requires_new_upload_from_version = None
+
+    def publish(self, by_person):
+        if self.status != self.Status.APPROVED:
+            raise InvalidStateError("Only approved documents can be published.")
+        latest = self.latest_version
+        if latest is None:
+            raise InvalidStateError("A document must have a version to be published.")
+        if self.published_version_id is None or self.published_version_id != latest.pk:
+            # New content under review → bump major, reset minor.
+            self.major_version += 1
+            self.minor_version = 0
+            self.published_version = latest
+        else:
+            # Same content re-approved → bump minor.
+            self.minor_version += 1
+        self.status = self.Status.PUBLISHED
+        self.published_at = timezone.now()
+        self.published_by_person = by_person
+
+    def unpublish(self, by_person, reason):
+        if self.status != self.Status.PUBLISHED:
+            raise InvalidStateError("Only published documents can be unpublished.")
+        if not reason or not reason.strip():
+            raise InvalidStateError("A reason is required to unpublish a document.")
+        self.status = self.Status.PENDING_APPROVAL
+        self.unpublished_at = timezone.now()
+        self.unpublished_by_person = by_person
+        self.unpublish_reason = reason
+
+    def archive(self, by_person):
+        if self.status == self.Status.ARCHIVED:
+            raise InvalidStateError("Document is already archived.")
+        if self.published_version_id is None:
+            raise InvalidStateError(
+                "Only documents that have been published can be archived."
+            )
+        self.status = self.Status.ARCHIVED
 
 
 class DocumentVersion(UUIDModel):

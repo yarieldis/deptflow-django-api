@@ -27,3 +27,8 @@ class TenantRequiredError(DomainError):
 class ConflictError(DomainError):
     status_code = 409
     code = "conflict"
+
+
+class InvalidStateError(DomainError):
+    status_code = 409
+    code = "invalid_state"

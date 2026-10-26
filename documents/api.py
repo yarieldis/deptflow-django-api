@@ -4,7 +4,14 @@ from ninja import File, Form, Router
 from ninja.files import UploadedFile
 
 from documents import services
-from documents.schemas import DocumentDetailOut, DocumentOut, VersionOut
+from documents.schemas import (
+    ApproveIn,
+    DocumentDetailOut,
+    DocumentOut,
+    RejectIn,
+    UnpublishIn,
+    VersionOut,
+)
 
 router = Router()
 
@@ -72,3 +79,42 @@ def add_document_version(
         size_bytes=len(content),
         change_note=change_note,
     )
+
+
+@router.post("/documents/{document_id}/submit", response=DocumentOut)
+def submit_document(request, document_id: uuid.UUID):
+    return services.submit_document(request, document_id=document_id)
+
+
+@router.post("/documents/{document_id}/approve", response=DocumentOut)
+def approve_document(request, document_id: uuid.UUID, payload: ApproveIn):
+    return services.approve_document(
+        request, document_id=document_id, comment=payload.comment
+    )
+
+
+@router.post("/documents/{document_id}/reject", response=DocumentOut)
+def reject_document(request, document_id: uuid.UUID, payload: RejectIn):
+    return services.reject_document(
+        request,
+        document_id=document_id,
+        comment=payload.comment,
+        requires_new_upload=payload.requires_new_upload,
+    )
+
+
+@router.post("/documents/{document_id}/publish", response=DocumentOut)
+def publish_document(request, document_id: uuid.UUID):
+    return services.publish_document(request, document_id=document_id)
+
+
+@router.post("/documents/{document_id}/unpublish", response=DocumentOut)
+def unpublish_document(request, document_id: uuid.UUID, payload: UnpublishIn):
+    return services.unpublish_document(
+        request, document_id=document_id, reason=payload.reason
+    )
+
+
+@router.post("/documents/{document_id}/archive", response=DocumentOut)
+def archive_document(request, document_id: uuid.UUID):
+    return services.archive_document(request, document_id=document_id)

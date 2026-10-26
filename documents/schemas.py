@@ -34,6 +34,19 @@ class VersionOut(Schema):
     created_at: datetime
 
 
+class ApproveIn(Schema):
+    comment: str = ""
+
+
+class RejectIn(Schema):
+    comment: str
+    requires_new_upload: bool = False
+
+
+class UnpublishIn(Schema):
+    reason: str
+
+
 class DocumentDetailOut(Schema):
     id: uuid.UUID
     title: str

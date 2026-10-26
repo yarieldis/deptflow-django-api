@@ -1,29 +1,15 @@
 from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
 from core.errors import ConflictError, ForbiddenError, NotFoundError
 from core.storage import StorageProvider
 from core.tenancy import require_tenant
 from documents.models import Document, DocumentType, DocumentVersion
+from documents.policy import DocumentAccessPolicy
 from institutions.models import Department
-from people.models import PersonDepartment
 from people.services import resolve_current_person
 
 _storage = StorageProvider()
-
-
-def _active_membership_department_ids(person) -> set:
-    today = timezone.localdate()
-    memberships = PersonDepartment.objects.filter(
-        person=person,
-        start_date__lte=today,
-    ).filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
-    return set(memberships.values_list("department_id", flat=True))
-
-
-def _can_access(person, department) -> bool:
-    return department.id in _active_membership_department_ids(person)
+_policy = DocumentAccessPolicy()
 
 
 def create_document(
@@ -46,7 +32,7 @@ def create_document(
     )
     if department is None:
         raise NotFoundError("Department not found.")
-    if not _can_access(person, department):
+    if not _policy.can_access(person, department):
         raise ForbiddenError("Not an active member of this department.")
 
     if document_type_id is not None and not DocumentType.objects.for_tenant(
@@ -83,7 +69,7 @@ def create_document(
 def list_documents(request) -> list[Document]:
     tenant_id = require_tenant()
     person = resolve_current_person(request)
-    department_ids = _active_membership_department_ids(person)
+    department_ids = DocumentAccessPolicy.active_department_ids(person)
     return list(
         Document.objects.for_tenant(tenant_id).filter(department_id__in=department_ids)
     )
@@ -95,7 +81,7 @@ def get_document(request, *, document_id) -> Document:
     document = Document.objects.for_tenant(tenant_id).filter(id=document_id).first()
     if document is None:
         raise NotFoundError("Document not found.")
-    if not _can_access(person, document.department):
+    if not _policy.can_access(person, document.department):
         raise ForbiddenError("Not an active member of this department.")
     return document
 
@@ -116,7 +102,7 @@ def add_document_version(
     document = Document.objects.for_tenant(tenant_id).filter(id=document_id).first()
     if document is None:
         raise NotFoundError("Document not found.")
-    if not _can_access(person, document.department):
+    if not _policy.can_access(person, document.department):
         raise ForbiddenError("Not an active member of this department.")
     if document.status != Document.Status.DRAFT:
         raise ConflictError(
@@ -136,7 +122,112 @@ def add_document_version(
                 change_note=change_note,
                 created_by_person=person,
             )
+            # A new upload clears the requires-new-upload gate.
+            document.requires_new_upload = False
+            document.requires_new_upload_from_version = None
+            document.save(
+                update_fields=[
+                    "requires_new_upload",
+                    "requires_new_upload_from_version",
+                    "updated_at",
+                ]
+            )
     except Exception:
         _storage.delete(key)
         raise
     return version
+
+
+def _locked_document(tenant_id, document_id):
+    return (
+        Document.objects.for_tenant(tenant_id)
+        .select_for_update()
+        .filter(id=document_id)
+        .first()
+    )
+
+
+def submit_document(request, *, document_id) -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_submit(person, document):
+            raise ForbiddenError("Not allowed to submit this document.")
+        document.submit(person)
+        document.save()
+    return document
+
+
+def approve_document(request, *, document_id, comment="") -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_approve(person, document):
+            raise ForbiddenError("Not allowed to approve this document.")
+        document.approve(person, comment=comment)
+        document.save()
+    return document
+
+
+def reject_document(
+    request, *, document_id, comment, requires_new_upload=False
+) -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_review(person, document):
+            raise ForbiddenError("Not allowed to reject this document.")
+        document.reject(person, comment=comment, requires_new_upload=requires_new_upload)
+        document.save()
+    return document
+
+
+def publish_document(request, *, document_id) -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_publish(person, document):
+            raise ForbiddenError("Not allowed to publish this document.")
+        document.publish(person)
+        document.save()
+    return document
+
+
+def unpublish_document(request, *, document_id, reason) -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_publish(person, document):
+            raise ForbiddenError("Not allowed to unpublish this document.")
+        document.unpublish(person, reason=reason)
+        document.save()
+    return document
+
+
+def archive_document(request, *, document_id) -> Document:
+    tenant_id = require_tenant()
+    person = resolve_current_person(request)
+    with transaction.atomic():
+        document = _locked_document(tenant_id, document_id)
+        if document is None:
+            raise NotFoundError("Document not found.")
+        if not _policy.can_archive(person, document):
+            raise ForbiddenError("Not allowed to archive this document.")
+        document.archive(person)
+        document.save()
+    return document
