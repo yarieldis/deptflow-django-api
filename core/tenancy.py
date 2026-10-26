@@ -2,6 +2,8 @@ import contextvars
 import uuid
 from contextlib import contextmanager
 
+from core.errors import TenantRequiredError
+
 _current_tenant: contextvars.ContextVar[uuid.UUID | None] = contextvars.ContextVar(
     "current_tenant", default=None
 )
@@ -10,6 +12,14 @@ _current_tenant: contextvars.ContextVar[uuid.UUID | None] = contextvars.ContextV
 def current_tenant_id() -> uuid.UUID | None:
     """Return the institution id scoping the current request/context."""
     return _current_tenant.get()
+
+
+def require_tenant() -> uuid.UUID:
+    """Return the current tenant id or raise if no tenant is in scope."""
+    tenant_id = current_tenant_id()
+    if tenant_id is None:
+        raise TenantRequiredError("X-Institution-Id header is required.")
+    return tenant_id
 
 
 @contextmanager

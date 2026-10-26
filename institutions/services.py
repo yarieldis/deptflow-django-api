@@ -1,16 +1,8 @@
 from django.db import IntegrityError
 
-from core.errors import ConflictError, NotFoundError, TenantRequiredError
-from core.tenancy import current_tenant_id
+from core.errors import ConflictError, NotFoundError
+from core.tenancy import require_tenant
 from institutions.models import Department, Institution
-
-
-def require_tenant():
-    """Return the current tenant id or raise if no tenant is in scope."""
-    tenant_id = current_tenant_id()
-    if tenant_id is None:
-        raise TenantRequiredError("X-Institution-Id header is required.")
-    return tenant_id
 
 
 def create_institution(*, name: str, code: str) -> Institution:

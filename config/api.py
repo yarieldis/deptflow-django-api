@@ -2,6 +2,7 @@ from ninja import NinjaAPI
 
 from core.errors import DomainError
 from institutions.api import router as institutions_router
+from people.api import router as people_router
 
 api = NinjaAPI(title="DeptFlow API")
 
@@ -16,3 +17,4 @@ def domain_error_handler(request, exc: DomainError):
 
 
 api.add_router("/", institutions_router)
+api.add_router("/", people_router)
